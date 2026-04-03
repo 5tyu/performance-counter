@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Taha's Counter</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="./src/style.css">
+  <style>
+    body { justify-content: center; }
+    .admin-metric { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; background:var(--glass); border:1px solid var(--glass-border); border-radius:var(--radius-md); }
+    .admin-metric-label { font-family:'Syne',sans-serif; font-size:11px; font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.08em; }
+    .admin-metric-val { font-family:'DM Mono',monospace; font-size:22px; font-weight:500; }
+    .admin-metric-pct { font-family:'DM Mono',monospace; font-size:13px; color:var(--text-dim); }
+    .section-title { font-family:'Syne',sans-serif; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-dim); margin-bottom:12px; }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-logo">Admin</div>
+  <div class="loading-spinner"></div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Edit User Modal -->
+<div class="edit-modal-overlay" id="editModal">
+  <div class="edit-modal-box">
+    <div class="edit-modal-title">Edit User</div>
+    <input type="hidden" id="edit-uid">
+    <div style="margin-bottom:10px;">
+      <label style="font-size:11px;color:var(--text-dim);font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:0.08em;">Name</label>
+      <input type="text" class="modal-input" id="edit-name" style="margin-bottom:0;margin-top:6px;">
+    </div>
+    <div style="margin-bottom:10px;">
+      <label style="font-size:11px;color:var(--text-dim);font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:0.08em;">Email</label>
+      <input type="email" class="modal-input" id="edit-email" style="margin-bottom:0;margin-top:6px;">
+    </div>
+    <div style="margin-bottom:20px;">
+      <label style="font-size:11px;color:var(--text-dim);font-family:'Syne',sans-serif;text-transform:uppercase;letter-spacing:0.08em;">Role</label>
+      <select class="modal-input" id="edit-role" style="margin-bottom:0;margin-top:6px;font-size:14px;">
+        <option value="agent">Agent</option>
+        <option value="supervisor">Supervisor</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-primary" id="saveEditBtn">Save Changes</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('editModal').classList.remove('active')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin Shell -->
+<div class="admin-shell">
+
+  <!-- Header -->
+  <div class="admin-header">
+    <div>
+      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:28px;letter-spacing:-0.03em;">Commander</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:2px;font-family:'DM Mono',monospace;">Admin Control Panel</div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <span class="sync-dot" id="syncDot"></span>
+      <span style="font-size:11px;color:var(--text-dim);" id="syncLabel">Loading…</span>
+      <button class="btn btn-ghost" id="logoutBtn">Sign Out</button>
+    </div>
+  </div>
+
+  <!-- ── Create Agent / Supervisor ─────────────────────────── -->
+  <div class="glass-card" style="padding:20px;margin-bottom:20px;">
+    <div class="section-title">Register New User</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <input type="text" class="modal-input" id="new-name" placeholder="Full name" style="flex:1;min-width:130px;margin-bottom:0;">
+      <input type="email" class="modal-input" id="new-email" placeholder="Email address" style="flex:1.5;min-width:180px;margin-bottom:0;">
+      <input type="password" class="modal-input" id="new-pass" placeholder="Password (min 6)" style="flex:1;min-width:130px;margin-bottom:0;">
+      <select class="modal-input" id="new-role" style="flex:0.7;min-width:120px;font-size:14px;margin-bottom:0;">
+        <option value="agent">Agent</option>
+        <option value="supervisor">Supervisor</option>
+      </select>
+      <select class="modal-input" id="new-supervisor" style="flex:1;min-width:140px;font-size:14px;margin-bottom:0;">
+        <option value="">No Supervisor</option>
+      </select>
+      <button class="btn btn-primary" id="createUserBtn" style="min-width:130px;">Create User</button>
+    </div>
+    <div style="font-family:'DM Mono',monospace;font-size:12px;min-height:16px;margin-top:10px;" id="createMsg"></div>
+  </div>
+
+  <!-- ── User Table + Kanban row ─────────────────────────────── -->
+  <div class="admin-grid">
+
+    <!-- User Table -->
+    <div class="glass-card" style="padding:20px;overflow:auto;">
+      <div class="section-title">User Directory</div>
+      <table class="user-table" id="userTable">
+        <thead><tr>
+          <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="userTableBody"></tbody>
+      </table>
+    </div>
+
+    <!-- Kanban -->
+    <div class="glass-card" style="padding:20px;overflow:auto;">
+      <div class="section-title">Team Organization</div>
+      <div class="kanban-board" id="kanbanBoard"></div>
+    </div>
+  </div>
+
+  <!-- ── Analytics Row ─────────────────────────────────────── -->
+  <div class="admin-grid" style="margin-top:0;">
+
+    <!-- Calendar -->
+    <div class="glass-card" style="padding:20px;">
+      <div class="section-title">
+        Select Days
+        <button class="select-all-btn" id="selectAllBtn" style="float:right;">All</button>
+      </div>
+      <div class="calendar-grid" id="admin-cal-grid" style="gap:5px;"></div>
+    </div>
+
+    <!-- Agent selector + Exports -->
+    <div class="glass-card" style="padding:20px;">
+      <div class="section-title">View Performance</div>
+      <select class="modal-input" id="agentSelect" style="width:100%;font-size:14px;margin-bottom:14px;">
+        <option value="all">All Team</option>
+      </select>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-ghost" id="exportRawBtn">Export Raw Call Logs (.xlsx)</button>
+        <button class="btn btn-primary" id="exportPerfBtn">Export Performance Report (.xlsx)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Dashboard Metrics ──────────────────────────────────── -->
+  <div class="glass-card" style="padding:24px;margin-top:20px;">
+    <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px;margin-bottom:18px;" id="dashTitle">Team Performance</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+      <div class="admin-metric">
+        <div><div class="admin-metric-label">Payments / Calls</div><div class="admin-metric-pct" id="d-pay-pct">0.0%</div></div>
+        <div class="admin-metric-val" id="d-pay">0 / 0</div>
+      </div>
+      <div class="admin-metric">
+        <div><div class="admin-metric-label">Full Balance / Calls</div><div class="admin-metric-pct" id="d-full-pct">0.0%</div></div>
+        <div class="admin-metric-val" id="d-full">0 / 0</div>
+      </div>
+      <div class="admin-metric">
+        <div><div class="admin-metric-label">Removed / In Coll.</div><div class="admin-metric-pct" id="d-post-pct">0.0%</div></div>
+        <div class="admin-metric-val" id="d-post">0 / 0</div>
+      </div>
+      <div class="admin-metric">
+        <div><div class="admin-metric-label">Auto Pay</div><div class="admin-metric-pct" id="d-ap-money" style="color:var(--success);">$0</div></div>
+        <div class="admin-metric-val" id="d-ap">0</div>
+      </div>
+      <div class="admin-metric">
+        <div><div class="admin-metric-label">Payment Plans</div><div class="admin-metric-pct" id="d-pp-money" style="color:var(--success);">$0</div></div>
+        <div class="admin-metric-val" id="d-pp">0</div>
+      </div>
+      <div class="admin-metric">
+        <div><div class="admin-metric-label">Credits Applied</div></div>
+        <div class="admin-metric-val" id="d-credits" style="color:var(--warning);">$0</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center;padding:20px 0;font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace;">
+    Taha's Counter · Commander v3 · Firebase Edition
+  </div>
+
+</div><!-- /admin-shell -->
+
+<script type="module">
+import { initializeApp }           from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut }
+                                   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, getDoc, getDocs, onSnapshot,
+         updateDoc, deleteDoc, query, where, orderBy }
+                                   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getFunctions, httpsCallable }
+                                   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAMw0DoMDycNvqpAZFBTuxDuMNcZ50MAQc",
+  authDomain: "performance-counter.firebaseapp.com",
+  databaseURL: "https://performance-counter-default-rtdb.firebaseio.com",
+  projectId: "performance-counter",
+  storageBucket: "performance-counter.firebasestorage.app",
+  messagingSenderId: "605140364499",
+  appId: "1:605140364499:web:2cdaec7a04f1e57678b826",
+  measurementId: "G-7H5SNPN646"
+};
+
+const app       = initializeApp(firebaseConfig);
+const auth      = getAuth(app);
+const db        = getFirestore(app);
+const functions = getFunctions(app);
+
+// Cloud Function callers
+const adminCreateUser  = httpsCallable(functions, 'adminCreateUser');
+const adminDisableUser = httpsCallable(functions, 'adminDisableUser');
+const adminDeleteUser  = httpsCallable(functions, 'adminDeleteUser');
+
+let selectedDays = [new Date().getDate()];
+let allUsers     = [];   // Firestore user docs
+let allMetrics   = {};   // { uid: { 1: {...}, ... } }
+
+// ── Toast ────────────────────────────────────────────────────
+function toast(msg, type='info', dur=3000) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = `toast show ${type}`;
+  clearTimeout(el._t); el._t = setTimeout(() => el.className='toast', dur);
+}
+
+// ── Sync dot ─────────────────────────────────────────────────
+function setSyncState(state) {
+  const dot = document.getElementById('syncDot');
+  const lbl = document.getElementById('syncLabel');
+  if (state==='ok')      { dot.className='sync-dot'; lbl.textContent='Live'; }
+  if (state==='syncing') { dot.className='sync-dot syncing'; lbl.textContent='Loading…'; }
+  if (state==='error')   { dot.className='sync-dot error'; lbl.textContent='Error'; }
+}
+
+// ── Auth Guard ───────────────────────────────────────────────
+onAuthStateChanged(auth, async (user) => {
+  if (!user) { window.location.href='./index.html'; return; }
+  const profileSnap = await getDoc(doc(db,'users',user.uid));
+  if (!profileSnap.exists() || profileSnap.data().role !== 'admin') {
+    await signOut(auth);
+    window.location.href = './index.html';
+    return;
+  }
+  hideLoading();
+  initAdmin();
+});
+
+function hideLoading() {
+  const el = document.getElementById('loadingOverlay');
+  el.classList.add('hidden');
+  setTimeout(() => el.style.display='none', 400);
+}
+
+// ── Init ─────────────────────────────────────────────────────
+async function initAdmin() {
+  setSyncState('syncing');
+  // Subscribe to users collection
+  onSnapshot(collection(db,'users'), (snap) => {
+    allUsers = snap.docs.map(d => ({ uid: d.id, ...d.data() })).filter(u => u.role !== 'admin');
+    renderSupervisorDropdown();
+    renderAgentDropdown();
+    renderUserTable();
+    renderKanban();
+    updateDashboard();
+    setSyncState('ok');
+  });
+
+  setupCalendar();
+  setupEvents();
+}
+
+// ── Events ───────────────────────────────────────────────────
+function setupEvents() {
+  document.getElementById('logoutBtn').onclick = async () => {
+    await signOut(auth); window.location.href='./index.html';
+  };
+  document.getElementById('createUserBtn').onclick = createUser;
+  document.getElementById('selectAllBtn').onclick  = toggleSelectAll;
+  document.getElementById('agentSelect').onchange  = updateDashboard;
+  document.getElementById('saveEditBtn').onclick   = saveEdit;
+  document.getElementById('exportRawBtn').onclick  = exportRaw;
+  document.getElementById('exportPerfBtn').onclick = exportPerf;
+  document.getElementById('new-role').onchange = (e) => {
+    document.getElementById('new-supervisor').style.display = e.target.value === 'supervisor' ? 'none' : '';
+  };
+}
+
+// ── Create User (via Cloud Function) ─────────────────────────
+async function createUser() {
+  const name      = document.getElementById('new-name').value.trim();
+  const email     = document.getElementById('new-email').value.trim();
+  const pass      = document.getElementById('new-pass').value;
+  const role      = document.getElementById('new-role').value;
+  const supId     = document.getElementById('new-supervisor').value || null;
+  const msgEl     = document.getElementById('createMsg');
+
+  if (!name || !email || !pass) {
+    msgEl.style.color = 'var(--danger)'; msgEl.textContent = 'Fill all fields.'; return;
+  }
+
+  const btn = document.getElementById('createUserBtn');
+  btn.innerHTML = '<span class="spinner"></span>'; btn.disabled = true;
+
+  try {
+    const result = await adminCreateUser({ email, password:pass, name, role, supervisorId:supId });
+    msgEl.style.color = 'var(--success)';
+    msgEl.textContent = result.data.message;
+    ['new-name','new-email','new-pass'].forEach(id => document.getElementById(id).value='');
+    toast('User created!', 'success');
+  } catch (e) {
+    msgEl.style.color = 'var(--danger)';
+    msgEl.textContent = e.message;
+    toast('Create failed: ' + e.message, 'error');
+  } finally {
+    btn.textContent = 'Create User'; btn.disabled = false;
+  }
+}
+
+// ── Supervisor Dropdown ───────────────────────────────────────
+function renderSupervisorDropdown() {
+  const sel = document.getElementById('new-supervisor');
+  sel.innerHTML = '<option value="">No Supervisor</option>';
+  allUsers.filter(u=>u.role==='supervisor').forEach(u => {
+    sel.insertAdjacentHTML('beforeend', `<option value="${u.uid}">${u.name}</option>`);
+  });
+}
+
+// ── Agent Dropdown ────────────────────────────────────────────
+function renderAgentDropdown() {
+  const sel = document.getElementById('agentSelect');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="all">All Team</option>';
+  const unassigned = allUsers.filter(u=>u.role==='agent'&&!u.supervisorId);
+  if (unassigned.length) {
+    const og = document.createElement('optgroup'); og.label='Unassigned';
+    unassigned.forEach(u => og.insertAdjacentHTML('beforeend',`<option value="${u.uid}">${u.name}</option>`));
+    sel.appendChild(og);
+  }
+  allUsers.filter(u=>u.role==='supervisor').forEach(sup => {
+    const og = document.createElement('optgroup'); og.label=`Team: ${sup.name}`;
+    og.insertAdjacentHTML('beforeend',`<option value="${sup.uid}">${sup.name} (Supervisor)</option>`);
+    allUsers.filter(u=>u.role==='agent'&&u.supervisorId===sup.uid).forEach(u => {
+      og.insertAdjacentHTML('beforeend',`<option value="${u.uid}">${u.name}</option>`);
+    });
+    sel.appendChild(og);
+  });
+  if (cur) sel.value = cur;
+}
+
+// ── User Table ────────────────────────────────────────────────
+function renderUserTable() {
+  const tbody = document.getElementById('userTableBody');
+  tbody.innerHTML = '';
+  allUsers.forEach(u => {
+    const tr = document.createElement('tr');
+    const statusPill = u.disabled
+      ? `<span class="status-pill inactive">Inactive</span>`
+      : `<span class="status-pill active">Active</span>`;
+    tr.innerHTML = `
+      <td>${u.name || '—'}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:11px;">${u.email}</td>
+      <td style="text-transform:capitalize;">${u.role}</td>
+      <td>${statusPill}</td>
+      <td>
+        <button class="action-btn" onclick="openEdit('${u.uid}')">Edit</button>
+        <button class="action-btn" onclick="toggleDisable('${u.uid}',${!u.disabled})">${u.disabled?'Enable':'Disable'}</button>
+        <button class="action-btn danger" onclick="deleteUser('${u.uid}')">Delete</button>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+// ── Edit Modal ────────────────────────────────────────────────
+window.openEdit = function(uid) {
+  const u = allUsers.find(u=>u.uid===uid);
+  if (!u) return;
+  document.getElementById('edit-uid').value   = uid;
+  document.getElementById('edit-name').value  = u.name  || '';
+  document.getElementById('edit-email').value = u.email || '';
+  document.getElementById('edit-role').value  = u.role  || 'agent';
+  document.getElementById('editModal').classList.add('active');
+};
+
+async function saveEdit() {
+  const uid   = document.getElementById('edit-uid').value;
+  const name  = document.getElementById('edit-name').value.trim();
+  const email = document.getElementById('edit-email').value.trim();
+  const role  = document.getElementById('edit-role').value;
+  if (!name || !email) { toast('Name and email required','error'); return; }
+  const btn = document.getElementById('saveEditBtn');
+  btn.innerHTML = '<span class="spinner"></span>'; btn.disabled = true;
+  try {
+    await updateDoc(doc(db,'users',uid), { name, email, role });
+    document.getElementById('editModal').classList.remove('active');
+    toast('User updated', 'success');
+  } catch(e) { toast('Update failed: ' + e.message, 'error'); }
+  finally { btn.textContent='Save Changes'; btn.disabled=false; }
+}
+
+window.toggleDisable = async function(uid, disable) {
+  try {
+    await adminDisableUser({ targetUid: uid, disabled: disable });
+    toast(disable ? 'User disabled' : 'User enabled', 'info');
+  } catch(e) { toast('Failed: ' + e.message, 'error'); }
+};
+
+window.deleteUser = async function(uid) {
+  if (!confirm('Permanently delete this user? This cannot be undone.')) return;
+  try {
+    await adminDeleteUser({ targetUid: uid });
+    toast('User deleted', 'info');
+  } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
+};
+
+// ── Kanban Board ──────────────────────────────────────────────
+function renderKanban() {
+  const board = document.getElementById('kanbanBoard');
+  board.innerHTML = '';
+  const supervisors = allUsers.filter(u=>u.role==='supervisor');
+  const agents      = allUsers.filter(u=>u.role==='agent');
+  board.appendChild(makeKanbanCol('unassigned','Unassigned', agents.filter(a=>!a.supervisorId)));
+  supervisors.forEach(sup => {
+    board.appendChild(makeKanbanCol(sup.uid, sup.name, agents.filter(a=>a.supervisorId===sup.uid)));
+  });
+}
+
+function makeKanbanCol(supId, title, agents) {
+  const col = document.createElement('div');
+  col.className = 'kanban-col';
+  col.dataset.supId = supId;
+  col.innerHTML = `<div class="kanban-col-title">${title}</div>`;
+  agents.forEach(a => {
+    const card = document.createElement('div');
+    card.className = 'draggable-card';
+    card.draggable = true;
+    card.dataset.agentId = a.uid;
+    card.innerHTML = `<span>${a.name}</span><span style="opacity:0.4;font-size:11px;">⣿</span>`;
+    card.addEventListener('dragstart', () => card.classList.add('dragging'));
+    card.addEventListener('dragend',   () => card.classList.remove('dragging'));
+    col.appendChild(card);
+  });
+  col.addEventListener('dragover', e => {
+    e.preventDefault();
+    const dc = document.querySelector('.dragging');
+    if (dc) col.appendChild(dc);
+  });
+  col.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const dc  = document.querySelector('.dragging');
+    if (!dc) return;
+    const aId    = dc.dataset.agentId;
+    const newSup = col.dataset.supId === 'unassigned' ? null : col.dataset.supId;
+    try { await updateDoc(doc(db,'users',aId), { supervisorId: newSup }); }
+    catch(e) { toast('Failed to reassign agent','error'); }
+  });
+  return col;
+}
+
+// ── Calendar ──────────────────────────────────────────────────
+function setupCalendar() {
+  const grid = document.getElementById('admin-cal-grid');
+  grid.innerHTML = '';
+  for (let i=1;i<=31;i++) {
+    const btn = document.createElement('div');
+    btn.className='day-btn';
+    btn.textContent = i;
+    if (selectedDays.includes(i)) btn.classList.add('active');
+    btn.onclick = () => {
+      if (selectedDays.includes(i)) { selectedDays=selectedDays.filter(d=>d!==i); if(!selectedDays.length) selectedDays=[i]; }
+      else selectedDays.push(i);
+      setupCalendar(); updateDashboard();
+    };
+    grid.appendChild(btn);
+  }
+}
+
+function toggleSelectAll() {
+  selectedDays = selectedDays.length===31 ? [new Date().getDate()] : Array.from({length:31},(_,i)=>i+1);
+  setupCalendar(); updateDashboard();
+}
+
+// ── Metrics Fetch ─────────────────────────────────────────────
+async function getAgentMetrics(uid) {
+  // Always fetch fresh — never use stale cache
+  const snap = await getDocs(collection(db,'users',uid,'metrics'));
+  const data = {};
+  for (let i=1;i<=31;i++) data[i] = {calls:0,pay:0,full:0,coll:0,rem:0,post:0,credits:0,ap:0,pp:0};
+  snap.forEach(d => { const n=parseInt(d.id); if(n>=1&&n<=31) data[n]={...data[n],...d.data()}; });
+  allMetrics[uid] = data;
+  return data;
+}
+
+function aggForDays(data) {
+  const r={calls:0,pay:0,full:0,coll:0,rem:0,post:0,credits:0,ap:0,pp:0};
+  selectedDays.forEach(d=>{const day=data[d]||{}; Object.keys(r).forEach(k=>r[k]+=(day[k]||0));});
+  return r;
+}
+
+// ── Dashboard Update ──────────────────────────────────────────
+async function updateDashboard() {
+  const agentId = document.getElementById('agentSelect').value;
+  let agg = {calls:0,pay:0,full:0,coll:0,rem:0,post:0,credits:0,ap:0,pp:0};
+
+  if (agentId === 'all') {
+    document.getElementById('dashTitle').textContent = 'Team Performance';
+    for (const u of allUsers) {
+      const data = await getAgentMetrics(u.uid);
+      const d    = aggForDays(data);
+      Object.keys(agg).forEach(k => agg[k]+=d[k]);
+    }
+  } else {
+    const u = allUsers.find(u=>u.uid===agentId);
+    document.getElementById('dashTitle').textContent = `${u?.name||'Agent'}'s Performance`;
+    const data = await getAgentMetrics(agentId);
+    agg = aggForDays(data);
+  }
+
+  const payPct  = agg.calls ? (agg.pay  / agg.calls * 100) : 0;
+  const fullPct = agg.calls ? (agg.full / agg.calls * 100) : 0;
+  const postPct = agg.coll  ? (agg.post / agg.coll  * 100) : 0;
+
+  const sv = (id,v) => { const el=document.getElementById(id); if(el) el.textContent=v; };
+  sv('d-pay',    `${agg.pay} / ${agg.calls}`);
+  sv('d-pay-pct', payPct.toFixed(1)+'%');
+  sv('d-full',   `${agg.full} / ${agg.calls}`);
+  sv('d-full-pct', fullPct.toFixed(1)+'%');
+  sv('d-post',   `${agg.post} / ${agg.coll}`);
+  sv('d-post-pct', postPct.toFixed(1)+'%');
+  sv('d-ap',     agg.ap);
+  sv('d-ap-money', '$'+(agg.ap*2).toFixed(0));
+  sv('d-pp',     agg.pp);
+  sv('d-pp-money', '$'+agg.pp.toFixed(0));
+  sv('d-credits', '$'+agg.credits.toFixed(0));
+}
+
+// ── Exports ───────────────────────────────────────────────────
+async function exportRaw() {
+  toast('Fetching call logs…', 'info', 2000);
+  try {
+    const snap = await getDocs(collection(db, 'callLogs'));
+    const allLogs = [];
+    snap.forEach(d => allLogs.push(d.data()));
+
+    // Filter by selected days
+    const filtered = allLogs.filter(l => {
+      if (!l.ts) return false;
+      const d = new Date(l.ts);
+      return selectedDays.includes(d.getDate());
+    });
+
+    // Enrich with agent name
+    const uidToName = {};
+    allUsers.forEach(u => { uidToName[u.uid] = u.name || u.email; });
+
+    const data = [['Agent Name','Agent Email','Account #','Seq #','Outcome','Timestamp']];
+    filtered
+      .sort((a,b) => new Date(a.ts) - new Date(b.ts))
+      .forEach(l => data.push([
+        uidToName[l.agentUid] || l.agentEmail || 'Unknown',
+        l.agentEmail || '—',
+        l.acc, l.seq, l.outcome,
+        new Date(l.ts).toLocaleString()
+      ]));
+
+    if (data.length === 1) { toast('No call logs for selected days', 'info'); return; }
+
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    ws['!cols'] = [18,24,14,14,16,22].map(w => ({wch:w}));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Raw Call Logs');
+    XLSX.writeFile(wb, 'Raw_Call_Logs.xlsx');
+    toast(`Exported ${data.length-1} log entries`, 'success');
+  } catch(e) {
+    console.error(e);
+    toast('Export failed: ' + e.message, 'error');
+  }
+}
+
+async function exportPerf() {
+  toast('Building performance report…', 'info', 2000);
+
+  const pct   = (n,d)  => d ? (n/d*100).toFixed(1)+'%' : '0.0%';
+  const money = (n)    => '$' + Number(n).toFixed(2);
+  const HEADERS = ['Rep Name','Role','Supervisor','Calls','Payments','Pay Yield %','Full Payments','Full Pay %','In Collection','Removed Post.','% Coll Removed','Auto Pay #','Payment Plans #','Credits ($)'];
+
+  // Helper: aggregate metrics for an array of days
+  const aggUser = async (uid) => {
+    const m = await getAgentMetrics(uid);
+    const r = {calls:0,pay:0,full:0,coll:0,rem:0,post:0,credits:0,ap:0,pp:0};
+    selectedDays.forEach(d => { const day=m[d]||{}; Object.keys(r).forEach(k=>r[k]+=(day[k]||0)); });
+    return r;
+  };
+
+  // Helper: sum two agg objects
+  const addAgg = (a,b) => { const r={...a}; Object.keys(r).forEach(k=>r[k]+=b[k]||0); return r; };
+  const zeroAgg = () => ({calls:0,pay:0,full:0,coll:0,rem:0,post:0,credits:0,ap:0,pp:0});
+
+  // Build row from agg
+  const makeRow = (name, role, supName, agg) => [
+    name, role, supName,
+    agg.calls,
+    agg.pay,   pct(agg.pay,  agg.calls),
+    agg.full,  pct(agg.full, agg.calls),
+    agg.coll,
+    agg.post,  pct(agg.post, agg.coll),
+    agg.ap,    agg.pp,
+    agg.credits ? `($${agg.credits.toFixed(2)})` : '$0.00'
+  ];
+
+  const rows  = [HEADERS];
+  const styles = []; // { row, type } → 'header'|'supervisor'|'team_total'|'queue_total'|'agent'
+  styles.push({ row: 0, type: 'header' });
+
+  const supervisors   = allUsers.filter(u => u.role==='supervisor');
+  const unassigned    = allUsers.filter(u => u.role==='agent' && !u.supervisorId);
+  let   queueAgg      = zeroAgg();
+
+  // ── Each supervisor team ──────────────────────────────────
+  for (const sup of supervisors) {
+    const agents = allUsers.filter(u => u.role==='agent' && u.supervisorId===sup.uid);
+    if (agents.length === 0) continue;
+
+    // Supervisor header row
+    rows.push([`Supervisor: ${sup.name}`, 'Supervisor', '—', '', '', '', '', '', '', '', '', '', '', '']);
+    styles.push({ row: rows.length-1, type: 'supervisor' });
+
+    let teamAgg = zeroAgg();
+    for (const agent of agents) {
+      const agg = await aggUser(agent.uid);
+      teamAgg   = addAgg(teamAgg, agg);
+      rows.push(makeRow(agent.name || agent.email, 'Agent', sup.name, agg));
+      styles.push({ row: rows.length-1, type: 'agent' });
+    }
+    queueAgg = addAgg(queueAgg, teamAgg);
+
+    // Team subtotal
+    rows.push(makeRow(`Team Total — ${sup.name}`, '', '', teamAgg));
+    styles.push({ row: rows.length-1, type: 'team_total' });
+    rows.push(['']);
+  }
+
+  // ── Unassigned agents ─────────────────────────────────────
+  if (unassigned.length) {
+    rows.push(['Unassigned Agents', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+    styles.push({ row: rows.length-1, type: 'supervisor' });
+    let unAgg = zeroAgg();
+    for (const agent of unassigned) {
+      const agg = await aggUser(agent.uid);
+      unAgg     = addAgg(unAgg, agg);
+      rows.push(makeRow(agent.name || agent.email, 'Agent', 'Unassigned', agg));
+      styles.push({ row: rows.length-1, type: 'agent' });
+    }
+    queueAgg = addAgg(queueAgg, unAgg);
+    rows.push(makeRow('Unassigned Total', '', '', unAgg));
+    styles.push({ row: rows.length-1, type: 'team_total' });
+    rows.push(['']);
+  }
+
+  // ── Queue total ───────────────────────────────────────────
+  rows.push(makeRow('QUEUE TOTAL (All Teams)', '', '', queueAgg));
+  styles.push({ row: rows.length-1, type: 'queue_total' });
+
+  // ── Build worksheet ───────────────────────────────────────
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [24,12,18,8,10,12,10,10,12,10,14,10,14,14].map(w=>({wch:w}));
+
+  // Apply styles using cell-level formatting
+  const styleMap = {
+    header:      { fgColor: {rgb:'1E293B'}, fontColor: {rgb:'F8FAFC'}, bold: true },
+    supervisor:  { fgColor: {rgb:'334155'}, fontColor: {rgb:'E2E8F0'}, bold: true },
+    team_total:  { fgColor: {rgb:'0F172A'}, fontColor: {rgb:'FCD34D'}, bold: true },
+    queue_total: { fgColor: {rgb:'000000'}, fontColor: {rgb:'4ADE80'}, bold: true },
+    agent:       { fgColor: null,           fontColor: null,            bold: false },
+  };
+
+  styles.forEach(({ row, type }) => {
+    const s = styleMap[type];
+    if (!s) return;
+    for (let c = 0; c < HEADERS.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r: row, c });
+      if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+      ws[addr].s = {
+        font:    { bold: s.bold, color: s.fontColor ? { rgb: s.fontColor.rgb } : undefined },
+        fill:    s.fgColor ? { patternType: 'solid', fgColor: { rgb: s.fgColor.rgb } } : undefined,
+        alignment: { vertical: 'center' }
+      };
+    }
+  });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Performance');
+  XLSX.writeFile(wb, 'Performance_Report.xlsx');
+  toast('Performance report exported', 'success');
+}
+
+</script>
+</body>
+</html>
