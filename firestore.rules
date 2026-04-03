@@ -1,0 +1,55 @@
+// firestore.rules — Deploy via: firebase deploy --only firestore:rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: check if the requester is an admin
+    function isAdmin() {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Helper: check if authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper: check if requesting own document
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── Users collection ──────────────────────────────────────────────
+    match /users/{uid} {
+      // Agents can read/write their own profile; admins can read/write all
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if isOwner(uid) || isAdmin();
+
+      // ── Metrics sub-collection (31 day documents per user) ──────────
+      match /metrics/{dayDoc} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow write: if isOwner(uid) || isAdmin();
+      }
+    }
+
+    // ── Tier configs (admin-only write, agents read) ──────────────────
+    match /config/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Global announcements (admin write, all read) ──────────────────
+    match /announcements/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+
+    // ── Call Logs (agents write, admins read) ────────────────────────
+    match /callLogs/{logId} {
+      allow create: if isSignedIn();
+      allow read:   if isAdmin();
+    }
+
+}
